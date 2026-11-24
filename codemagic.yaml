@@ -1,0 +1,46 @@
+workflows:
+  android-apk:
+    name: ClearRepost Android APK
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      flutter: stable
+    scripts:
+      - name: Buat folder android (repo hanya berisi lib/ dan pubspec.yaml)
+        script: |
+          mkdir -p /tmp/keep
+          cp -r lib /tmp/keep/lib
+          cp pubspec.yaml /tmp/keep/pubspec.yaml
+          flutter create --org com.ady --project-name clear_repost --platforms=android .
+          rm -rf lib
+          cp -r /tmp/keep/lib lib
+          cp /tmp/keep/pubspec.yaml pubspec.yaml
+      - name: Tambah izin INTERNET
+        script: |
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          if 'android.permission.INTERNET' not in s:
+              s = s.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+              open(p, 'w').write(s)
+          print('INTERNET' in s)
+          PY
+      - name: Matikan lintVital (bug lint di plugin webview)
+        script: |
+          mkdir -p $HOME/.gradle/init.d
+          cat > $HOME/.gradle/init.d/disable-lint.gradle <<'GRADLE'
+          allprojects {
+            tasks.configureEach { t ->
+              if (t.name.startsWith('lintVital')) {
+                t.enabled = false
+              }
+            }
+          }
+          GRADLE
+          cat $HOME/.gradle/init.d/disable-lint.gradle
+      - name: Ambil dependency
+        script: flutter pub get
+      - name: Build APK release
+        script: flutter build apk --release
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
